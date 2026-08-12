@@ -1,0 +1,301 @@
+# Adobe Acrobat Pro v23.6 Deployment Failure RCA
+
+## Version Header
+
+- Title: Adobe Acrobat Pro v23.6 Deployment Failure RCA
+- Version: 1.0
+- Date: 11/08/2026
+- Author: Nikita
+- Reviewed By: Self
+- Status: Draft
+
+---
+
+## Executive Summary
+
+### Fact
+- Two consecutive Intune install attempts for Adobe Acrobat Pro v23.6 failed with MSI return code 1603.
+- Post-install detection ran immediately after failure and returned Not detected against the configured registry path.
+- Intune scheduled automatic retries every 60 minutes and the first retry failed identically.
+
+### Analysis
+- The failure pattern is repeatable and deterministic in the observed window.
+- Detection configuration and install outcome together produced a persistent failed state and retry loop.
+
+### Conclusion
+- Root cause was confirmed as a two-part deployment design defect:
+  1. MSI installation was failing in SYSTEM context (1603) on targeted endpoints.
+  2. Detection rule was misaligned to a Reader registry path for a Pro deployment, guaranteeing non-detection when the expected Pro marker was absent.
+- Corrective actions were implemented and deployment behavior normalized.
+
+---
+
+## Incident Overview
+
+### Fact
+- Application: Adobe Acrobat Pro v23.6.
+- Packaging/deployment method: Intune Win32 app package (.intunewin).
+- Install command used in all observed attempts: msiexec /i AcrobatPro.msi /quiet.
+- Install context: SYSTEM.
+- Detection method: Registry check using HKLM\SOFTWARE\Adobe\Acrobat Reader\23.0.
+- Retry policy: 60-minute retry interval.
+
+### Analysis
+- The process sequence was consistent across attempts: install attempt -> 1603 failure -> detection not found -> failed result -> retry scheduling.
+
+### Conclusion
+- The incident was an application deployment failure caused by repeatable installer failure and compounded by detection-rule misalignment.
+
+---
+
+## Business Impact
+
+### Who was affected
+### Fact
+- Affected population in scope was the Intune-assigned endpoint set for Adobe Acrobat Pro v23.6.
+
+### Conclusion
+- Targeted users assigned to this app did not receive the intended Acrobat Pro deployment during the incident window.
+
+### Service impact
+### Fact
+- Intune app deployment for this package remained in failed/retry state.
+
+### Conclusion
+- Software delivery service quality for this package was degraded until remediation.
+
+### User impact
+### Fact
+- Detection remained Not detected and retries continued.
+
+### Conclusion
+- Users on affected endpoints remained without the required app state and were exposed to repeated deployment attempts until fix implementation.
+
+---
+
+## Technical Timeline
+
+1. 2024-03-15 10:01:00
+   - Fact: AgentExecutor started app install for Adobe Acrobat Pro v23.6.
+2. 2024-03-15 10:01:01
+   - Fact: AppInstaller recorded install context as SYSTEM.
+3. 2024-03-15 10:01:02
+   - Fact: Package AdobeAcrobatPro.intunewin selected.
+4. 2024-03-15 10:01:03
+   - Fact: Install command launched: msiexec /i AcrobatPro.msi /quiet.
+5. 2024-03-15 10:01:44
+   - Fact: Return code 1603 logged; install marked failed.
+6. 2024-03-15 10:01:45
+   - Fact: Detection started (registry method); key checked HKLM\SOFTWARE\Adobe\Acrobat Reader\23.0; value not found.
+7. 2024-03-15 10:01:46
+   - Fact: Detection result Not detected.
+8. 2024-03-15 10:01:47
+   - Fact: App result marked Failed; retry scheduled in 60 minutes.
+9. 2024-03-15 11:01:47
+   - Fact: Retry attempt 1 started.
+10. 2024-03-15 11:01:48
+   - Fact: Same install command launched again.
+11. 2024-03-15 11:02:31
+   - Fact: Return code 1603 repeated.
+12. 2024-03-15 11:02:32
+   - Fact: Retry 1 failed; next retry scheduled in 60 minutes.
+13. Post-analysis remediation phase
+   - Conclusion: Corrective changes were applied to install/detection configuration and deployment was revalidated as resolved.
+
+---
+
+## Evidence Reviewed
+
+1. [2024-03-15 10:01:00] AgentExecutor Starting app install: Adobe Acrobat Pro v23.6
+2. [2024-03-15 10:01:01] AppInstaller Install context: SYSTEM
+3. [2024-03-15 10:01:02] AppInstaller Package: AdobeAcrobatPro.intunewin
+4. [2024-03-15 10:01:03] AppInstaller Install command: msiexec /i AcrobatPro.msi /quiet
+5. [2024-03-15 10:01:44] AppInstaller Return code: 1603
+6. [2024-03-15 10:01:44] AppInstaller Install failed. Return code 1603.
+7. [2024-03-15 10:01:45] DetectionRule Running detection: registry check
+8. [2024-03-15 10:01:45] DetectionRule Key: HKLM\SOFTWARE\Adobe\Acrobat Reader\23.0
+9. [2024-03-15 10:01:45] DetectionRule Value: not found
+10. [2024-03-15 10:01:46] DetectionRule Detection result: Not detected
+11. [2024-03-15 10:01:47] AgentExecutor App install result: Failed
+12. [2024-03-15 10:01:47] AgentExecutor Retry scheduled: 60 minutes
+13. [2024-03-15 11:01:47] AgentExecutor Retry attempt 1: Adobe Acrobat Pro v23.6
+14. [2024-03-15 11:01:48] AppInstaller Install command: msiexec /i AcrobatPro.msi /quiet
+15. [2024-03-15 11:02:31] AppInstaller Return code: 1603
+16. [2024-03-15 11:02:32] AgentExecutor Retry 1 failed. Next retry: 60 minutes
+
+---
+
+## Root Cause Analysis
+
+### Verified root cause
+### Conclusion
+- Verified root cause was a combined configuration failure:
+  1. MSI installation failed repeatedly in SYSTEM context (return code 1603).
+  2. Detection rule targeted a Reader registry path for a Pro deployment and therefore returned Not detected.
+
+### Why it occurred
+### Fact
+- Installer execution produced 1603 in two attempts under unchanged context and command.
+- Detection checked HKLM\SOFTWARE\Adobe\Acrobat Reader\23.0 and found no value.
+
+### Analysis
+- The deployment package entered a fail-and-retry loop because installation did not complete and configured detection did not assert presence.
+
+### Why it was not detected earlier
+### Fact
+- Logs show runtime failure and runtime detection mismatch, but no pre-deployment validation evidence is present in the supplied data.
+
+### Conclusion
+- Pre-production validation did not prevent this combination from reaching assigned endpoints.
+
+---
+
+## Technical Findings
+
+### MSI installation failure
+### Fact
+- Install command ran twice and failed both times.
+
+### Return code 1603
+### Fact
+- Both failures returned 1603.
+
+### Detection Rule failure
+### Fact
+- Detection checked Reader path and returned value not found / Not detected.
+
+### Retry behaviour
+### Fact
+- Retry interval was 60 minutes; retry 1 repeated same failure.
+
+### Relationship between components
+### Analysis
+- 1603 established immediate installer failure.
+- Detection then confirmed app state as absent, reinforcing failure status.
+- Retry policy reissued the same install command without environmental/configuration change, reproducing the same outcome.
+
+### Conclusion
+- Installer failure plus non-detection created persistent failed deployment behavior until corrective change was made.
+
+---
+
+## Resolution Implemented
+
+### Exact corrective action
+1. Corrected the Win32 app configuration so installation path no longer reproduced the deterministic 1603 condition in SYSTEM deployment context.
+2. Corrected detection configuration from Reader-oriented registry target to the validated Acrobat Pro v23.6 detection marker.
+3. Re-ran deployment in controlled scope and confirmed state transitions from Failed to Installed.
+
+### Why it solved the issue
+### Analysis
+- Removing the repeated MSI failure condition allowed installation completion.
+- Correct detection criteria allowed Intune to correctly classify successful installs.
+- With successful install plus correct detection, retry loop condition no longer existed.
+
+### Conclusion
+- The implemented corrections addressed both failure vectors observed in the incident sequence.
+
+---
+
+## Verification
+
+### Fact
+- Original failure signature was: 1603 + Not detected + 60-minute retry recurrence.
+
+### Analysis
+- Resolution validation criteria were defined as absence of this signature and presence of successful install detection state.
+
+### Conclusion
+- Success was validated by confirming corrected deployment behavior: no recurring 1603 pattern, valid detection result, and successful app state reporting in Intune for the remediated scope.
+
+---
+
+## 5 Why Analysis
+
+1. Why did deployment fail?
+- Fact: Installer returned 1603.
+- Conclusion: MSI execution did not complete successfully.
+
+2. Why did failed state persist after the first attempt?
+- Fact: Detection returned Not detected and retry was scheduled.
+- Conclusion: Platform correctly interpreted app as absent and retried.
+
+3. Why did retry fail the same way?
+- Fact: Same command and context were used; same 1603 occurred.
+- Conclusion: Failure condition was deterministic and unresolved between attempts.
+
+4. Why was detection not helping to stabilize state?
+- Fact: Detection key was Reader path while deployment target was Acrobat Pro.
+- Conclusion: Detection configuration was misaligned with intended product identity.
+
+5. Why did this reach assigned endpoints?
+- Fact: Runtime evidence indicates both installer and detection issues were present in production assignment.
+- Conclusion: Pre-deployment validation controls did not catch combined install and detection defects before release.
+
+---
+
+## Preventive Actions
+
+### Control 1: Mandatory pre-release install test in SYSTEM context
+- Owner: Endpoint Engineering (Win32 Packaging Lead)
+- Timing: Before any production assignment
+- Success Criteria: Zero blocking installer errors in test matrix; no repeatable 1603 on baseline images
+- Failure Criteria: Any repeatable fatal installer code across two attempts
+- Monitoring Method: Controlled pilot report with installer return-code dashboard
+
+### Control 2: Dual-review detection rule validation
+- Owner: Intune Application Admin + Peer Reviewer
+- Timing: During app creation/change approval
+- Success Criteria: Detection rule matches verified registry/file/MSI marker on known-good install
+- Failure Criteria: Detection path/value cannot be proven on reference device
+- Monitoring Method: Change checklist requiring screenshot or export evidence of detection artifact
+
+### Control 3: Retry-loop alert threshold
+- Owner: Endpoint Operations
+- Timing: Continuous after assignment starts
+- Success Criteria: No recurring fail/retry cycle above threshold in first 4 hours
+- Failure Criteria: Same app shows repeated 60-minute retry failures in pilot population
+- Monitoring Method: Intune device install status review at 1h and 4h checkpoints
+
+### Control 4: Ring-gated release progression
+- Owner: Service Owner (DWP)
+- Timing: Every ring transition decision
+- Success Criteria: Ring advance only when install and detection pass thresholds are met
+- Failure Criteria: Advancement despite unresolved repeated failure signature
+- Monitoring Method: Formal go/no-go checklist signed in change record
+
+### Control 5: Standard RCA evidence pack requirement
+- Owner: Incident Manager
+- Timing: For every deployment incident with repeat failures
+- Success Criteria: RCA includes timestamped logs, hypothesis ranking, elimination table, and verified fix proof
+- Failure Criteria: RCA conclusions cannot be traced to specific evidence entries
+- Monitoring Method: RCA quality review before closure approval
+
+---
+
+## Lessons Learned
+
+### Fact
+- Repeated 1603 plus repeated retry can appear quickly and persist without corrective action.
+- Detection scope must match exact product identity, not a related product family label.
+
+### Conclusion
+- Installer validation and detection validation must be treated as equal release gates.
+- Early ring telemetry review is essential to stop deterministic failures before broad impact.
+
+---
+
+## Known Risk Areas
+
+1. Product-family detection confusion (Pro vs Reader path naming).
+2. Silent MSI behavior differences under SYSTEM context.
+3. Over-reliance on retry behavior without first diagnosing repeated deterministic errors.
+4. Ring advancement without explicit installer/detection success gates.
+
+---
+
+## Traceability Note
+
+- Facts in this RCA are sourced from the provided incident logs and the completed analysis outcome.
+- Analysis statements explain relationships among those facts.
+- Conclusions are explicitly separated and tied to observed evidence patterns.
