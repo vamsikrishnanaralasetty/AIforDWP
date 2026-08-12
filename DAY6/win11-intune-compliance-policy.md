@@ -107,9 +107,9 @@ If a third-party EDR is deployed estate-wide, validate whether Intune correctly 
 
 | Field | Detail |
 |---|---|
-| **Setting Name** | `Microsoft Defender Firewall` |
+| **Setting Name** | `Firewall` |
 | **Value** | `Require` |
-| **Intune UI Path** | Devices → Compliance policies → Create policy → Windows 10 and later → **System Security** → Windows Defender Firewall → Microsoft Defender Firewall |
+| **Intune UI Path** | Devices → Compliance policies → Policies → Create policy → Windows 10 and later → Compliance settings → **Device security** → Firewall |
 
 **Effect:**  
 Verifies that Windows Defender Firewall is enabled across Domain, Private, and Public network profiles. A device with firewall disabled on any profile is marked non-compliant.
@@ -179,7 +179,7 @@ Pair this with Microsoft Defender for Endpoint's device risk score integration f
 | 2 | Secure Boot enabled | Require Secure Boot | Require | 7 days |
 | 3 | Minimum OS build (N-1) | Minimum OS version | 10.0.22621.2861 | 7 days |
 | 4 | Defender RTP on | Require real-time protection | Require | 7 days |
-| 5 | Firewall all profiles | Microsoft Defender Firewall | Require | 7 days |
+| 5 | Firewall all profiles | Firewall | Require | 7 days |
 | 6 | PIN or password set | Require a password to unlock mobile devices | Require | 7 days |
 | 7 | Not jailbroken/rooted | Device not jail broken or rooted / MDE risk score | Block / Clear | 7 days |
 
@@ -195,6 +195,52 @@ The following settings carry a risk of UI path change since training data (knowl
 | ⚠ | Require a password to unlock mobile devices | Label is under review by Microsoft; functional behaviour is correct but the display name may differ |
 | ⚠ | Jailbroken/rooted (Windows) | This is iOS/Android terminology carried into Windows policies; the preferred Windows path is now via MDE integration — verify current UI location |
 | ⚠ | HAS evaluation rules | Microsoft has been migrating some HAS settings into the MDE connector blade; confirm whether standalone HAS settings are still surfaced in your tenant |
+
+---
+
+## Post-Assignment Validation (After First Device Sync)
+
+### 1) Where to Check This Device Against This Specific Policy
+
+In Intune admin center (`https://intune.microsoft.com`):
+1. Go to **Devices** → **All devices**.
+2. Open the test device.
+3. Select **Device compliance**.
+4. Select the policy **Windows 10/11 compliance policy** (or your named policy).
+5. Review:
+	- **Overall device compliance state** for this policy.
+	- **Per-setting results** (BitLocker, Secure Boot, Firewall, etc.).
+	- **Last check-in** timestamp.
+
+Alternate policy-centric view:
+1. Go to **Devices** → **Compliance policies** → **Policies**.
+2. Open this Windows policy.
+3. Open **Device status**.
+4. Search for the device and open it to see setting-level results.
+
+### 2) What Compliance States Mean for Conditional Access
+
+- **Compliant**: Device meets policy. Conditional Access policies requiring a compliant device allow sign-in (assuming all other controls also pass).
+- **Not compliant**: Device failed policy and is marked noncompliant. Conditional Access policies requiring compliant devices block access to protected apps.
+- **In grace period**: Device has one or more failed settings, but the noncompliance action delay is still running (7 days in this design). During grace period, the device is not yet enforced as noncompliant for CA in most tenants, so access usually continues until grace expires.
+
+### 3) BitLocker Shows Non-Compliant but BitLocker Is Enabled: Top 3 False-Positive Causes and Fastest Check
+
+1. **Health Attestation/MDM status is stale after encryption or update**  
+	Fastest check: In Intune, compare device **Last check-in** and per-setting evaluation time in **Device compliance**. If check-in is old, trigger **Sync** from device page and recheck after 15-30 minutes.
+
+2. **BitLocker is enabled but protection is suspended (Protection Off)**  
+	Fastest check on device (Admin PowerShell):  
+	`Get-BitLockerVolume -MountPoint C: | Select-Object MountPoint, VolumeStatus, ProtectionStatus, EncryptionPercentage`  
+	Expected for compliance: `ProtectionStatus = On`, `EncryptionPercentage = 100`.
+
+3. **OS volume is encrypted but attestation prerequisites are unhealthy (TPM/Secure Boot transition state)**  
+	Fastest check on device:
+	- `Get-Tpm` (look for `TpmPresent=True`, `TpmReady=True`)
+	- `Confirm-SecureBootUEFI` (should return `True`)
+	If either is unhealthy, HAS can report BitLocker-related health as failed until firmware/TPM state is corrected and a fresh check-in occurs.
+
+Operational note: For large migrations, treat BitLocker failures with stale check-in + healthy local encryption state as likely transient for the first 24 hours.
 
 ---
 
