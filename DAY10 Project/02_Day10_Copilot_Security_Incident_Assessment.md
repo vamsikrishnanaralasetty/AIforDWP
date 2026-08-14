@@ -16,7 +16,7 @@ No audit logs, permission reviews, Copilot traces, SharePoint checks, OneDrive c
 
 ---
 
-## SECTION 1 - Incident Classification
+## Incident Classification
 
 ### Classification Decision
 - Incident Type: Potential Security Incident (possible unauthorized information exposure)
@@ -74,7 +74,7 @@ Reasoning: At this stage, classification is based on potential impact and risk c
 
 ---
 
-## SECTION 2 - What I Would NOT Do
+## What I Would Not Do
 
 1. Close the ticket without investigation.
 - Why inappropriate: It ignores a potential confidentiality signal and prevents proper risk validation.
@@ -108,7 +108,7 @@ Reasoning: At this stage, classification is based on potential impact and risk c
 
 ---
 
-## SECTION 3 - Immediate Investigation Actions (Evidence Plan Only)
+## Immediate Investigation Actions
 
 The following evidence should be collected first. This section defines what to collect and why; it does not execute investigation.
 
